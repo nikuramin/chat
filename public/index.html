@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>chat</title>
+</head>
+
+<body>
+    <div id="root"></div>
+</body>
+<script>
+
+    function Chat(targetPlace) {
+        //сразу под создание авторизации пытаюсь взять логин из локального хранилища
+        let u_name = localStorage.getItem('u_name');
+        const messages = new Set();
+        const DOMRoot = targetPlace;
+        const msgPlace = document.createElement('div');
+        let webSocket;
+
+        const messageData = d => JSON.stringify({ ...d, u_name, dt: new Date() });
+
+        // рендер отдельного сообщения
+        const renderMessage = (m, container = msgPlace) => {
+            const DOMmsg = document.createElement('div');
+            if (u_name === m.u_name) {
+                DOMmsg.style.textAlign = 'right';
+            } else {
+                DOMmsg.textContent = m.u_name + ': ';
+            }
+            if (m.isService) DOMmsg.style.fontStyle = 'italic';
+            DOMmsg.textContent += m.message;
+            container.append(DOMmsg);
+            return DOMmsg
+        }
+        //функция рендера всех сообщений
+        this.renderMessages = (arr = messages, container = msgPlace) => {
+            //очищаем контенер для вывода сообщений
+            container.innerHTML = '';
+            //перебираем сообщения и добавляем в контейнер
+            arr.forEach(msg => renderMessage(msg, container));
+        };
+
+        //рендер приложения, если имени пользователя на задано -- выводим форму авторизации с вводом имени пользователя
+        this.render = () => {
+            DOMRoot.innerHTML = '';
+            if (u_name) {
+                DOMRoot.append(msgPlace);
+                //форма ввода сообщения
+                const messageForm = document.createElement('form');
+                //инпут формы сообщения
+                const messageInput = document.createElement('input');
+                //перехватываем отправку формы
+                messageForm.onsubmit = e => {
+                    //отменяем дефолтные действия
+                    e.preventDefault();
+                    console.log('send message', messageInput.value);
+                    //проверяем на непустое значение
+                    if (!messageInput.value) return;
+                    //отсылаем сообщение по сокету
+                    webSocket.send(messageData({ message: messageInput.value }));
+                    //очищаем инпут
+                    messageInput.value = '';
+                };
+                messageForm.append(messageInput);
+                DOMRoot.append(messageForm);
+                //поднимаем соединение с сокетом
+                webSocket = new WebSocket('ws://localhost:8801');
+                webSocket.onmessage = ({ data }) => {
+                    const m = JSON.parse(data);
+                    //добавляем полученное сообщение в хранилище
+                    console.log('get message', m);
+                    messages.add(m);
+                    //рендерим все сообщения
+                    // this.renderMessages();
+                    //вставляем только новое сообщение
+                    renderMessage(m);
+                };
+                webSocket.onopen = () =>
+                    //при подключении посылаем сервисное сообщение(выводится курсивом)
+                    webSocket.send(messageData({ message: 'enter in chat', isService: true }));
+            } else {
+                //диалоговое окно авторизации
+                const logInFormDialog = document.createElement('dialog');
+                //форма для ввода юзернейма
+                const logInForm = document.createElement('form');
+                //заголовок формы авторизации
+                const logInLabel = document.createElement('h3');
+                logInLabel.textContent = 'Введите имя пользователя';
+                //инпут юзернейма
+                const logInInput = document.createElement('input');
+
+                logInForm.onsubmit = e => {
+                    e.preventDefault();
+                    if (!logInInput.value) return;
+                    console.log(`log in with u_name ${logInInput.value}`);
+                    u_name = logInInput.value;
+                    this.render();
+                    // можно сделать сзапоминание пользователя и добавит ькнопку выхода из чата, очищающую локальное хранилище
+                    // localStorage.setItem('u_name', u_name)
+
+                };
+
+                //монтируем все на страницу
+                logInForm.append(logInLabel);
+                logInForm.append(logInInput);
+
+                logInFormDialog.append(logInForm);
+                logInFormDialog.show();
+
+                DOMRoot.append(logInFormDialog);
+            }
+        }
+        this.render();
+    };
+    const chat = new Chat(document.querySelector("#root"));
+
+
+</script>
+
+</html>
